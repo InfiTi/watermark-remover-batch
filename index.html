@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComfyUI 去水印批量处理工具</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --bg-card: #16213e;
+  --bg-input: #0f3460;
+  --accent: #e94560;
+  --accent-hover: #ff6b81;
+  --text: #eee;
+  --text-muted: #8a8a9a;
+  --success: #00d68f;
+  --warning: #ffaa00;
+  --error: #ff5252;
+  --border: #2a2a4a;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 20px;
+}
+.container { max-width: 1100px; margin: 0 auto; }
+h1 {
+  font-size: 24px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+h1 .icon { font-size: 28px; }
+.subtitle { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 18px;
+  margin-bottom: 16px;
+}
+.status-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--error);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.status-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.status-text { font-size: 14px; font-weight: 500; }
+.status-info { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.btn-launch {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.btn-launch:hover { background: var(--accent-hover); }
+.btn-launch:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.config-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.config-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.config-item { flex: 1; min-width: 200px; }
+.config-item label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.config-item input, .config-item textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.config-item input:focus, .config-item textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.config-item textarea { resize: vertical; min-height: 36px; }
+.btn-browse {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-browse:hover { border-color: var(--accent); }
+
+.drop-zone {
+  background: var(--bg-card);
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: border-color 0.3s, background 0.3s;
+}
+.drop-zone.dragover {
+  border-color: var(--accent);
+  background: rgba(233, 69, 96, 0.05);
+}
+.drop-zone .upload-icon { font-size: 48px; margin-bottom: 10px; }
+.drop-zone .upload-text { font-size: 15px; margin-bottom: 4px; }
+.drop-zone .upload-hint { font-size: 12px; color: var(--text-muted); }
+
+.queue-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.queue-title { font-size: 16px; font-weight: 600; }
+.queue-actions { display: flex; gap: 8px; }
+.btn-start {
+  background: var(--success);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-start:hover { filter: brightness(1.15); }
+.btn-start:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-clear {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-clear:hover { border-color: var(--error); color: var(--error); }
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s;
+}
+.progress-text { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+
+.task-list { max-height: 400px; overflow-y: auto; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.task-item:last-child { border-bottom: none; }
+.task-thumb {
+  width: 48px; height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--bg-input);
+  flex-shrink: 0;
+}
+.task-info { flex: 1; min-width: 0; }
+.task-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-status { font-size: 11px; }
+.task-status.pending { color: var(--text-muted); }
+.task-status.processing { color: var(--warning); }
+.task-status.done { color: var(--success); }
+.task-status.error { color: var(--error); }
+.task-result-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+.task-result-link:hover { text-decoration: underline; }
+.task-result-thumb {
+  width: 48px; height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--bg-input);
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 2px solid var(--success);
+}
+.task-retry {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  margin-right: 4px;
+  transition: all 0.2s;
+}
+.task-retry:hover { border-color: var(--accent); color: var(--accent); }
+.task-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px;
+}
+.task-remove:hover { color: var(--error); }
+
+/* Image viewer modal */
+.viewer-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.92);
+  z-index: 9999;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+.viewer-modal.show { display: flex; }
+.viewer-modal img {
+  max-width: 90%;
+  max-height: 80vh;
+  border-radius: 8px;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+}
+.viewer-modal .viewer-close {
+  position: absolute;
+  top: 20px; right: 30px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 40px; height: 40px;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.viewer-modal .viewer-close:hover { border-color: var(--error); color: var(--error); }
+.viewer-modal .viewer-info {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.viewer-modal .viewer-download {
+  margin-top: 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.viewer-modal .viewer-download:hover { background: var(--accent-hover); }
+
+/* Compare mode */
+.viewer-compare {
+  display: flex;
+  gap: 20px;
+  max-width: 95%;
+  max-height: 80vh;
+}
+.viewer-compare .compare-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.viewer-compare .compare-item img {
+  max-width: 45vw;
+  max-height: 75vh;
+  border-radius: 8px;
+  object-fit: contain;
+}
+.viewer-compare .compare-label {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+.viewer-compare .compare-label.orig { color: var(--warning); }
+.viewer-compare .compare-label.result { color: var(--success); }
+
+.log-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.log-header {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.log-content {
+  background: #0d1117;
+  border-radius: 6px;
+  padding: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.log-line { margin-bottom: 2px; }
+.log-line .time { color: #6a9955; }
+.log-line .info { color: #569cd6; }
+.log-line .warn { color: #dcdcaa; }
+.log-line .err { color: #f44747; }
+.log-line .ok { color: #4ec9b0; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1><span class="icon">🧹</span> ComfyUI 去水印批量处理工具</h1>
+  <p class="subtitle">基于 FLUX.2 Klein 4B 工作流，批量去除图片中的水印和 Logo</p>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">检测中...</span>
+    <span class="status-info" id="statusInfo"></span>
+    <button class="btn-launch" id="btnLaunch" onclick="launchComfyUI()">🚀 一键启动 ComfyUI</button>
+  </div>
+
+  <div class="config-panel">
+    <div class="config-row">
+      <div class="config-item">
+        <label>ComfyUI 地址</label>
+        <input type="text" id="cfgUrl" value="http://127.0.0.1:8188">
+      </div>
+      <div class="config-item" style="max-width:300px;">
+        <label>输出目录</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="cfgOutput" value="" placeholder="选择输出目录">
+          <button class="btn-browse" onclick="selectOutputDir()">浏览</button>
+        </div>
+      </div>
+    </div>
+    <div class="config-row">
+      <div class="config-item" style="max-width:120px;">
+        <label>CFG 引导强度</label>
+        <input type="number" id="cfgGuidance" value="5" min="1" max="20" step="0.5" title="值越高越遵循原图色彩，建议5-8">
+      </div>
+      <div class="config-item" style="max-width:120px;">
+        <label>采样步数</label>
+        <input type="number" id="cfgSteps" value="20" min="4" max="50" step="1">
+      </div>
+      <div class="config-item" style="max-width:180px;">
+        <label>文件名前缀</label>
+        <input type="text" id="cfgPrefix" value="去水印">
+      </div>
+    </div>
+    <div class="config-row">
+      <div class="config-item">
+        <label>提示词（去水印指令）</label>
+        <textarea id="cfgPrompt" rows="1">去掉图片中的文字logo，保持主体不变。保持原图色彩和色调不变。</textarea>
+      </div>
+    </div>
+    <div class="config-row">
+      <div class="config-item" style="max-width:400px;">
+        <label>ComfyUI 安装目录（用于一键启动）</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="cfgComfyPath" value="E:\AIGC\ComfyUI\ComfyUI-aki-v1.7">
+          <button class="btn-browse" onclick="selectComfyPath()">浏览</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">📁</div>
+    <div class="upload-text">点击选择图片或拖拽图片到此处</div>
+    <div class="upload-hint">支持 PNG / JPG / JPEG / WEBP / BMP，可多选</div>
+    <input type="file" id="fileInput" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+  </div>
+
+  <div class="queue-panel">
+    <div class="queue-header">
+      <span class="queue-title">📋 处理队列</span>
+      <div class="queue-actions">
+        <button class="btn-clear" onclick="clearQueue()">清空队列</button>
+        <button class="btn-start" id="btnStart" onclick="startProcessing()" disabled>▶ 开始处理</button>
+      </div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">等待添加图片...</div>
+    <div class="task-list" id="taskList">
+      <div style="text-align:center;color:var(--text-muted);padding:30px 0;font-size:13px;">
+        队列为空，请添加图片
+      </div>
+    </div>
+  </div>
+
+  <div class="log-panel">
+    <div class="log-header">📜 运行日志</div>
+    <div class="log-content" id="logContent">
+      <div class="log-line"><span class="time">[--:--:--]</span> <span class="info">[INFO]</span> 等待启动...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Image Viewer Modal -->
+<div class="viewer-modal" id="viewerModal" onclick="closeViewer(event)">
+  <button class="viewer-close" onclick="closeViewer()">✕</button>
+  <div id="viewerContent"></div>
+  <div class="viewer-info" id="viewerInfo"></div>
+  <button class="viewer-download" id="viewerDownload" onclick="downloadCurrentImage()">⬇ 下载图片</button>
+</div>
+
+<script>
+let taskQueue = [];
+let taskIdCounter = 0;
+let isProcessing = false;
+let comfyUIOnline = false;
+
+// ============ Logging ============
+function log(level, msg) {
+  const now = new Date();
+  const t = now.toTimeString().split(' ')[0];
+  const cls = {info:'info', warn:'warn', err:'err', ok:'ok'}[level] || 'info';
+  const tag = level.toUpperCase();
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="time">[${t}]</span> <span class="${cls}">[${tag}]</span> ${msg}`;
+  const content = document.getElementById('logContent');
+  content.appendChild(line);
+  content.scrollTop = content.scrollHeight;
+}
+
+// ============ API Helper ============
+async function apiGet(path) {
+  const resp = await fetch(path);
+  return resp;
+}
+async function apiPost(path, data) {
+  const resp = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return resp;
+}
+
+// ============ ComfyUI Proxy ============
+async function comfyGet(endpoint) {
+  const baseUrl = document.getElementById('cfgUrl').value.trim();
+  const resp = await fetch(`/proxy?url=${encodeURIComponent(baseUrl + endpoint)}`);
+  return resp;
+}
+async function comfyPost(endpoint, body) {
+  const baseUrl = document.getElementById('cfgUrl').value.trim();
+  const resp = await fetch(`/proxy?url=${encodeURIComponent(baseUrl + endpoint)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return resp;
+}
+
+// ============ ComfyUI Status ============
+async function checkStatus() {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const info = document.getElementById('statusInfo');
+
+  dot.className = 'status-dot loading';
+  text.textContent = '检测中...';
+
+  try {
+    const resp = await comfyGet('/system_stats');
+    if (resp.ok) {
+      const data = await resp.json();
+      dot.className = 'status-dot online';
+      text.textContent = 'ComfyUI 已连接';
+      const gpu = data.devices && data.devices[0];
+      info.textContent = gpu ? `${gpu.name} | VRAM: ${(gpu.vram_free/1e9).toFixed(1)}GB 可用` : '';
+      comfyUIOnline = true;
+      updateStartButton();
+      return true;
+    }
+  } catch(e) {}
+  dot.className = 'status-dot';
+  text.textContent = 'ComfyUI 未连接';
+  info.textContent = '';
+  comfyUIOnline = false;
+  updateStartButton();
+  return false;
+}
+
+// ============ Launch ComfyUI ============
+async function launchComfyUI() {
+  const comfyPath = document.getElementById('cfgComfyPath').value.trim();
+  log('info', `尝试启动 ComfyUI...`);
+  document.getElementById('btnLaunch').disabled = true;
+  
+  try {
+    const resp = await apiPost('/launch-comfyui', { path: comfyPath });
+    const data = await resp.json();
+    if (data.success) {
+      log('ok', data.message);
+      log('info', '开始自动检测 ComfyUI 启动状态...');
+      
+      let attempts = 0;
+      const pollTimer = setInterval(async () => {
+        attempts++;
+        const ok = await checkStatus();
+        if (ok) {
+          clearInterval(pollTimer);
+          log('ok', '✅ ComfyUI 已成功启动并连接！');
+          document.getElementById('btnLaunch').disabled = false;
+        } else if (attempts > 90) {
+          clearInterval(pollTimer);
+          log('warn', '检测超时(3分钟)，请确认 ComfyUI 已启动后手动检测。');
+          document.getElementById('btnLaunch').disabled = false;
+        }
+      }, 2000);
+    } else {
+      log('err', `启动失败: ${data.error}`);
+      document.getElementById('btnLaunch').disabled = false;
+    }
+  } catch(e) {
+    log('err', `请求失败: ${e.message}`);
+    document.getElementById('btnLaunch').disabled = false;
+  }
+}
+
+// ============ File Handling ============
+function handleFileSelect(event) {
+  addFiles(event.target.files);
+  event.target.value = '';
+}
+
+function addFiles(files) {
+  let added = 0;
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    const id = ++taskIdCounter;
+    const thumbUrl = URL.createObjectURL(file);
+    taskQueue.push({ id, file, thumbUrl, status: 'pending', resultUrl: null, errorMsg: null });
+    added++;
+  }
+  if (added > 0) {
+    log('info', `添加了 ${added} 张图片到队列`);
+    renderQueue();
+    updateStartButton();
+  }
+}
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(e.dataTransfer.files); });
+
+// ============ Folder Selection ============
+async function selectOutputDir() {
+  try {
+    const resp = await apiGet('/select-folder');
+    const data = await resp.json();
+    if (data.path) {
+      document.getElementById('cfgOutput').value = data.path;
+      saveConfig();
+      log('info', `输出目录已选择: ${data.path}`);
+    }
+  } catch(e) { log('err', `选择目录失败: ${e.message}`); }
+}
+
+async function selectComfyPath() {
+  try {
+    const resp = await apiGet('/select-folder');
+    const data = await resp.json();
+    if (data.path) {
+      document.getElementById('cfgComfyPath').value = data.path;
+      saveConfig();
+    }
+  } catch(e) { log('err', `选择目录失败: ${e.message}`); }
+}
+
+// ============ Queue ============
+function renderQueue() {
+  const list = document.getElementById('taskList');
+  if (taskQueue.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px 0;font-size:13px;">队列为空，请添加图片</div>';
+    return;
+  }
+  list.innerHTML = taskQueue.map(task => {
+    const statusMap = {
+      pending: { text: '⏳ 等待中', cls: 'pending' },
+      processing: { text: '🔄 处理中...', cls: 'processing' },
+      done: { text: '✅ 已完成', cls: 'done' },
+      error: { text: '❌ ' + (task.errorMsg || '失败'), cls: 'error' },
+    };
+    const s = statusMap[task.status] || statusMap.pending;
+    let actions = '';
+    if (task.status === 'pending') {
+      actions = `<button class="task-retry" onclick="retryTask(${task.id})" title="重新生成" style="display:none">🔄</button><button class="task-remove" onclick="removeTask(${task.id})" title="移除">✕</button>`;
+    } else if (task.status === 'done') {
+      actions = `<button class="task-retry" onclick="retryTask(${task.id})" title="重新生成">🔄</button><button class="task-remove" onclick="removeTask(${task.id})" title="移除" style="font-size:14px;">✕</button>`;
+    } else if (task.status === 'error') {
+      actions = `<button class="task-retry" onclick="retryTask(${task.id})" title="重试">🔄</button><button class="task-remove" onclick="removeTask(${task.id})" title="移除" style="font-size:14px;">✕</button>`;
+    }
+    // Show result thumbnail if done, otherwise show original
+    const isDone = task.status === 'done' && task.resultUrl;
+    const thumbSrc = isDone ? task.resultUrl : task.thumbUrl;
+    const thumbClass = isDone ? 'task-result-thumb' : 'task-thumb';
+    const thumbClick = `onclick="viewImageCompare(${task.id})"`;
+    const compareBadge = isDone ? '<span style="font-size:10px;color:var(--success);cursor:pointer;" onclick="viewImageCompare(' + task.id + ')">🔍 点击对比</span>' : (task.status === 'pending' ? '<span style="font-size:10px;color:var(--text-muted);cursor:pointer;" onclick="viewImage(\''+task.thumbUrl+'\',\''+task.file.name+' (原图)\')">🔍 查看原图</span>' : '');
+    return `
+      <div class="task-item" data-id="${task.id}">
+        <img class="${thumbClass}" src="${thumbSrc}" alt="" ${thumbClick}>
+        <div class="task-info">
+          <div class="task-name">${task.file.name}</div>
+          <div class="task-status ${s.cls}">${s.text}</div>
+          ${compareBadge}
+        </div>
+        ${actions}
+      </div>`;
+  }).join('');
+}
+
+function removeTask(id) {
+  taskQueue = taskQueue.filter(t => t.id !== id);
+  renderQueue();
+  updateStartButton();
+  updateProgress();
+}
+
+function clearQueue() {
+  if (isProcessing) { alert('处理中，无法清空队列'); return; }
+  taskQueue = [];
+  renderQueue();
+  updateStartButton();
+  updateProgress();
+}
+
+function updateStartButton() {
+  const btn = document.getElementById('btnStart');
+  const hasPending = taskQueue.some(t => t.status === 'pending');
+  btn.disabled = !comfyUIOnline || !hasPending || isProcessing;
+  btn.textContent = isProcessing ? '⏳ 处理中...' : '▶ 开始处理';
+}
+
+function updateProgress() {
+  const total = taskQueue.length;
+  const done = taskQueue.filter(t => t.status === 'done' || t.status === 'error').length;
+  const pct = total > 0 ? (done / total * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = 
+    total > 0 ? `进度: ${done}/${total} (${pct.toFixed(0)}%)` : '等待添加图片...';
+}
+
+// ============ ComfyUI API ============
+async function uploadImage(file) {
+  const baseUrl = document.getElementById('cfgUrl').value.trim();
+  const formData = new FormData();
+  formData.append('image', file, file.name);
+  formData.append('subfolder', '');
+  formData.append('type', 'input');
+  formData.append('overwrite', 'true');
+  
+  // Use proxy to avoid CORS - need to send multipart via proxy
+  // Since our proxy passes body as-is for POST, we'll use a special path
+  const resp = await fetch(`/proxy?url=${encodeURIComponent(baseUrl + '/upload/image')}`, { method: 'POST', body: formData });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`上传失败: ${resp.status} ${text}`);
+  }
+  const data = await resp.json();
+  return data.name;
+}
+
+// Workflow template - expanded from subgraph definitions
+const WORKFLOW_TEMPLATE = {
+  "87": { "class_type": "LoadImage", "inputs": { "image": "__IMAGE__", "upload": "image" } },
+  "86_70": { "class_type": "UNETLoader", "inputs": { "unet_name": "FLUX1_QUANT\\flux-2-klein-base-4b-fp8.safetensors", "weight_dtype": "default" } },
+  "86_71": { "class_type": "CLIPLoader", "inputs": { "clip_name": "FLUX1\\flux_kontext_qwen_3_4b_fp4.safetensors", "type": "flux2", "device": "default" } },
+  "86_72": { "class_type": "VAELoader", "inputs": { "vae_name": "flux2_vae.safetensors" } },
+  "86_74": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["86_71", 0], "text": "__PROMPT__" } },
+  "86_67": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["86_71", 0], "text": "" } },
+  "86_80": { "class_type": "ImageScaleToTotalPixels", "inputs": { "image": ["87", 0], "upscale_method": "lanczos", "megapixels": 1, "resolution_steps": 1 } },
+  "86_81": { "class_type": "GetImageSize", "inputs": { "image": ["86_80", 0] } },
+  "86_79_78": { "class_type": "VAEEncode", "inputs": { "pixels": ["86_80", 0], "vae": ["86_72", 0] } },
+  "86_79_77": { "class_type": "ReferenceLatent", "inputs": { "conditioning": ["86_74", 0], "latent": ["86_79_78", 0] } },
+  "86_79_76": { "class_type": "ReferenceLatent", "inputs": { "conditioning": ["86_67", 0], "latent": ["86_79_78", 0] } },
+  "86_62": { "class_type": "Flux2Scheduler", "inputs": { "steps": 20, "width": ["86_81", 0], "height": ["86_81", 1] } },
+  "86_66": { "class_type": "EmptyFlux2LatentImage", "inputs": { "width": ["86_81", 0], "height": ["86_81", 1], "batch_size": 1 } },
+  "86_63": { "class_type": "CFGGuider", "inputs": { "model": ["86_70", 0], "positive": ["86_79_77", 0], "negative": ["86_79_76", 0], "cfg": 5 } },
+  "86_61": { "class_type": "KSamplerSelect", "inputs": { "sampler_name": "euler" } },
+  "86_73": { "class_type": "RandomNoise", "inputs": { "noise_seed": 0 } },
+  "86_64": { "class_type": "SamplerCustomAdvanced", "inputs": { "noise": ["86_73", 0], "guider": ["86_63", 0], "sampler": ["86_61", 0], "sigmas": ["86_62", 0], "latent_image": ["86_66", 0] } },
+  "86_65": { "class_type": "VAEDecode", "inputs": { "samples": ["86_64", 0], "vae": ["86_72", 0] } },
+  "88": { "class_type": "SaveImage", "inputs": { "images": ["86_65", 0], "filename_prefix": "__PREFIX__" } }
+};
+
+function buildWorkflowPrompt(uploadedImageName, promptText, filenamePrefix) {
+  // Deep clone the template
+  const workflow = JSON.parse(JSON.stringify(WORKFLOW_TEMPLATE));
+  // Fill in placeholders
+  workflow["87"].inputs.image = uploadedImageName;
+  workflow["86_74"].inputs.text = promptText;
+  workflow["86_73"].inputs.noise_seed = Math.floor(Math.random() * 9007199254740991);
+  workflow["88"].inputs.filename_prefix = filenamePrefix;
+  // Apply advanced params
+  const cfgVal = parseFloat(document.getElementById('cfgGuidance').value) || 5;
+  const stepsVal = parseInt(document.getElementById('cfgSteps').value) || 20;
+  workflow["86_63"].inputs.cfg = cfgVal;
+  workflow["86_62"].inputs.steps = stepsVal;
+  return workflow;
+}
+
+async function queuePrompt(workflowPrompt) {
+  const resp = await comfyPost('/prompt', { prompt: workflowPrompt });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`提交工作流失败: ${resp.status} ${text}`);
+  }
+  const data = await resp.json();
+  return data.prompt_id;
+}
+
+async function pollResult(promptId, intervalMs = 2000) {
+  const maxAttempts = 600;
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      const resp = await comfyGet(`/history/${promptId}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data[promptId]) {
+          const outputs = data[promptId].outputs;
+          const status = data[promptId].status;
+          if (status && status.completed) {
+            for (const key in outputs) {
+              const out = outputs[key];
+              if (out.images && out.images.length > 0) {
+                return out.images[0];
+              }
+            }
+            throw new Error('Workflow completed but no output image found');
+          }
+          if (status && status.status_str === 'error') {
+            throw new Error('工作流执行出错: ' + JSON.stringify(status.messages || ''));
+          }
+        }
+      }
+    } catch(e) { if (e.message.includes('工作流')) throw e; }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error('等待结果超时（20分钟）');
+}
+
+async function downloadAndSaveResult(imageData, originalFilename) {
+  const baseUrl = document.getElementById('cfgUrl').value.trim();
+  const outputDir = document.getElementById('cfgOutput').value.trim();
+  
+  const imgUrl = `${baseUrl}/view?filename=${encodeURIComponent(imageData.filename)}&subfolder=${encodeURIComponent(imageData.subfolder || '')}&type=${encodeURIComponent(imageData.type || 'output')}`;
+  const proxyImgUrl = `/proxy?url=${encodeURIComponent(imgUrl)}`;
+  
+  // Fetch the image via proxy
+  const resp = await fetch(proxyImgUrl);
+  if (!resp.ok) throw new Error(`下载结果失败: ${resp.status}`);
+  const blob = await resp.blob();
+  
+  // Create a blob URL for in-page preview (always, regardless of output dir)
+  const blobUrl = URL.createObjectURL(blob);
+  
+  // Save to output dir if specified (backup)
+  if (outputDir) {
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(blob);
+      });
+      const saveResp = await apiPost('/save-image', {
+        output_dir: outputDir,
+        filename: originalFilename,
+        image_data: base64
+      });
+      const saveData = await saveResp.json();
+      if (saveData.success) {
+        log('ok', `[${originalFilename}] 已备份到: ${saveData.path}`);
+      } else {
+        log('warn', `[${originalFilename}] 备份失败: ${saveData.error || ''}`);
+      }
+    } catch(e) {
+      log('warn', `[${originalFilename}] 备份异常: ${e.message}`);
+    }
+  }
+  
+  // Always return blob URL for in-page preview
+  return blobUrl;
+}
+
+// ============ Main Processing ============
+async function startProcessing() {
+  if (!comfyUIOnline) { alert('ComfyUI 未连接，请先启动并检测连接'); return; }
+  
+  const cfg = {
+    comfyui_url: document.getElementById('cfgUrl').value.trim(),
+    output_dir: document.getElementById('cfgOutput').value.trim(),
+    prompt_text: document.getElementById('cfgPrompt').value.trim(),
+    filename_prefix: document.getElementById('cfgPrefix').value.trim(),
+  };
+  
+  if (!cfg.output_dir) {
+    if (!confirm('未设置输出目录，结果将仅保存在 ComfyUI 的 output 目录中。是否继续？')) return;
+  }
+  
+  isProcessing = true;
+  updateStartButton();
+  
+  const pendingTasks = taskQueue.filter(t => t.status === 'pending');
+  log('info', `开始批量处理，共 ${pendingTasks.length} 张图片`);
+  
+  for (const task of pendingTasks) {
+    task.status = 'processing';
+    renderQueue();
+    updateProgress();
+    
+    try {
+      log('info', `[${task.file.name}] 上传图片...`);
+      const uploadedName = await uploadImage(task.file);
+      log('ok', `[${task.file.name}] 上传成功`);
+      
+      log('info', `[${task.file.name}] 提交工作流...`);
+      const workflow = buildWorkflowPrompt(uploadedName, cfg.prompt_text, cfg.filename_prefix);
+      const promptId = await queuePrompt(workflow);
+      log('ok', `[${task.file.name}] 已提交, ID: ${promptId.substring(0, 8)}...`);
+      
+      log('info', `[${task.file.name}] 等待 ComfyUI 处理...`);
+      const imageData = await pollResult(promptId, 2000);
+      log('ok', `[${task.file.name}] 处理完成`);
+      
+      if (cfg.output_dir) {
+        log('info', `[${task.file.name}] 下载结果并备份...`);
+        task.resultUrl = await downloadAndSaveResult(imageData, task.file.name);
+      } else {
+        // No output dir, still download for in-page preview
+        task.resultUrl = await downloadAndSaveResult(imageData, task.file.name);
+      }
+      
+      task.status = 'done';
+      log('ok', `[${task.file.name}] ✅ 完成！`);
+      
+    } catch(e) {
+      task.status = 'error';
+      task.errorMsg = e.message;
+      log('err', `[${task.file.name}] ❌ ${e.message}`);
+    }
+    
+    renderQueue();
+    updateProgress();
+  }
+  
+  const successCount = taskQueue.filter(t => t.status === 'done').length;
+  const errorCount = taskQueue.filter(t => t.status === 'error').length;
+  log('ok', `🎉 批量处理完成！成功 ${successCount} 张，失败 ${errorCount} 张`);
+  
+  isProcessing = false;
+  updateStartButton();
+}
+
+// ============ Image Viewer ============
+let currentDownloadUrl = null;
+
+function viewImage(url, name) {
+  currentDownloadUrl = url;
+  const content = document.getElementById('viewerContent');
+  content.innerHTML = `<img src="${url}" alt="">`;
+  document.getElementById('viewerInfo').textContent = name;
+  document.getElementById('viewerDownload').style.display = url.startsWith('blob:') || url.startsWith('http') ? 'block' : 'none';
+  document.getElementById('viewerModal').classList.add('show');
+}
+
+function viewImageCompare(taskId) {
+  const task = taskQueue.find(t => t.id === taskId);
+  if (!task) return;
+  
+  // If task is done and has result, show side-by-side compare
+  if (task.status === 'done' && task.resultUrl && task.thumbUrl) {
+    currentDownloadUrl = task.resultUrl;
+    const content = document.getElementById('viewerContent');
+    content.innerHTML = `
+      <div class="viewer-compare">
+        <div class="compare-item">
+          <img src="${task.thumbUrl}" alt="原图">
+          <div class="compare-label orig">原图</div>
+        </div>
+        <div class="compare-item">
+          <img src="${task.resultUrl}" alt="结果">
+          <div class="compare-label result">去水印后</div>
+        </div>
+      </div>`;
+    document.getElementById('viewerInfo').textContent = task.file.name;
+    document.getElementById('viewerDownload').style.display = 'block';
+    document.getElementById('viewerModal').classList.add('show');
+  } else {
+    // Just show the original
+    viewImage(task.thumbUrl, task.file.name + ' (原图)');
+  }
+}
+
+// ============ Retry / Reprocess ============
+async function retryTask(id) {
+  const task = taskQueue.find(t => t.id === id);
+  if (!task) return;
+  if (isProcessing) { alert('当前正在处理中，请等待完成'); return; }
+  if (!comfyUIOnline) { alert('ComfyUI 未连接'); return; }
+  
+  // Reset task state
+  task.status = 'processing';
+  task.resultUrl = null;
+  task.errorMsg = null;
+  renderQueue();
+  updateProgress();
+  
+  isProcessing = true;
+  updateStartButton();
+  
+  try {
+    log('info', `[${task.file.name}] 重新生成中...`);
+    log('info', `[${task.file.name}] 上传图片...`);
+    const uploadedName = await uploadImage(task.file);
+    log('ok', `[${task.file.name}] 上传成功`);
+    
+    log('info', `[${task.file.name}] 提交工作流...`);
+    const promptText = document.getElementById('cfgPrompt').value.trim();
+    const prefix = document.getElementById('cfgPrefix').value.trim();
+    const workflow = buildWorkflowPrompt(uploadedName, promptText, prefix);
+    const promptId = await queuePrompt(workflow);
+    log('ok', `[${task.file.name}] 已提交, ID: ${promptId.substring(0, 8)}...`);
+    
+    log('info', `[${task.file.name}] 等待 ComfyUI 处理...`);
+    const imageData = await pollResult(promptId, 2000);
+    log('ok', `[${task.file.name}] 处理完成`);
+    
+    task.resultUrl = await downloadAndSaveResult(imageData, task.file.name);
+    task.status = 'done';
+    log('ok', `[${task.file.name}] ✅ 重新生成完成！`);
+  } catch(e) {
+    task.status = 'error';
+    task.errorMsg = e.message;
+    log('err', `[${task.file.name}] ❌ ${e.message}`);
+  }
+  
+  renderQueue();
+  updateProgress();
+  isProcessing = false;
+  updateStartButton();
+}
+
+function closeViewer(e) {
+  if (e && e.target.id !== 'viewerModal') return;
+  document.getElementById('viewerModal').classList.remove('show');
+}
+
+function downloadCurrentImage() {
+  if (!currentDownloadUrl) return;
+  const name = document.getElementById('viewerInfo').textContent;
+  const a = document.createElement('a');
+  a.href = currentDownloadUrl;
+  a.download = name;
+  a.click();
+}
+
+// ============ Config Persistence ============
+const CONFIG_KEYS = ['cfgUrl', 'cfgOutput', 'cfgPrompt', 'cfgPrefix', 'cfgComfyPath', 'cfgGuidance', 'cfgSteps'];
+
+function saveConfig() {
+  const config = {};
+  CONFIG_KEYS.forEach(key => {
+    const el = document.getElementById(key);
+    if (el) config[key] = el.value;
+  });
+  localStorage.setItem('watermark_tool_config', JSON.stringify(config));
+}
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem('watermark_tool_config');
+    if (raw) {
+      const config = JSON.parse(raw);
+      CONFIG_KEYS.forEach(key => {
+        const el = document.getElementById(key);
+        if (el && config[key] !== undefined) el.value = config[key];
+      });
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+// Save config on change
+CONFIG_KEYS.forEach(key => {
+  document.addEventListener('input', e => {
+    if (e.target && e.target.id === key) saveConfig();
+  });
+});
+
+// ============ Init ============
+window.addEventListener('DOMContentLoaded', async () => {
+  loadConfig();
+  log('info', '工具已初始化，正在检测 ComfyUI 连接...');
+  await checkStatus();
+  setInterval(checkStatus, 30000);
+});
+</script>
+</body>
+</html>
