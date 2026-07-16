@@ -1,97 +1,59 @@
-# ComfyUI 去水印批量处理工具
+# 去水印批量工具
 
-基于 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + FLUX.2 Klein 4B 模型的图片水印/Logo/文字批量去除工具。
+裁剪底部水印区域，无需 AI，纯 Python + PIL 实现。
 
-提供本地 Web 界面，支持批量上传、队列管理、实时进度、原图与结果对比查看。
+## 适用场景
 
-## 功能特性
-
-- 🖼️ **批量处理** — 拖拽或选择多张图片，一键排队处理
-- ⚡ **实时进度** — 处理状态、日志、进度条实时更新
-- 🔍 **对比查看** — 点击缩略图弹出原图 vs 去水印结果并排对比
-- 🔄 **重新生成** — 对不满意的結果可单独重新生成
-- 📁 **输出目录** — 可自定义输出路径，配置自动保存
-- 🎛️ **参数调节** — CFG 引导强度、采样步数可调
-
-## 环境要求
-
-- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) 已安装并运行（默认端口 8188）
-- FLUX.2 Klein 4B 模型
-- Python 3.8+（运行本地代理服务器）
-- 支持 CUDA 的 GPU（推荐 RTX 4070 Ti SUPER 或更高）
+去除图片右下角「豆包AI生成」水印。水印位于底部边缘的留白区域，裁剪底部 150px 即可完全去除，不影响主体内容。
 
 ## 快速开始
 
-### 1. 确认 ComfyUI 已运行
+### 方法一：GUI 版
 
 ```bash
-# 在 ComfyUI 目录启动
-python main.py --listen --port 8188
+python watermark_remover_simple.py
 ```
 
-### 2. 放置工作流文件
-
-确保你的 ComfyUI 中已加载 FLUX.2 Klein 4B 去水印工作流。工作流模板已内嵌在 `index.html` 中，无需额外配置。
-
-### 3. 启动批量工具
-
-双击 `启动工具.bat`，或手动运行：
+### 方法二：Web 版（推荐批量处理）
 
 ```bash
+# 双击 启动工具.bat，或运行：
 python server.py
 ```
 
-### 4. 打开浏览器
+浏览器打开 http://localhost:7890
 
-访问 http://127.0.0.1:8899
+### 方法三：命令行批量
 
-## 使用方法
+```python
+from watermark_remover_simple import remove_watermark, DEFAULT_CONFIG
+from PIL import Image
 
-1. **配置** — 设置 ComfyUI 地址（默认 `http://127.0.0.1:8188`）、输出目录
-2. **上传** — 点击或拖拽图片到上传区
-3. **开始** — 点击「开始处理」按钮
-4. **查看** — 处理完成后点击缩略图查看对比
-5. **重新生成** — 对结果不满意可点击 🔄 按钮重新处理
-
-## 文件说明
-
-| 文件 | 说明 |
-|------|------|
-| `server.py` | Python 本地代理服务器（端口 8899） |
-| `index.html` | Web 界面（含工作流模板） |
-| `workflow_template.json` | 展开后的 ComfyUI API 工作流模板 |
-| `config.json` | 默认配置 |
-| `启动工具.bat` | Windows 一键启动脚本 |
-
-## 工作原理
-
-```
-浏览器 (index.html)
-    ↓ 上传图片
-本地代理 (server.py:8899)
-    ↓ 转发请求
-ComfyUI API (:8188)
-    ↓ FLUX.2 Klein 4B 处理
-    ↓ 返回结果图
-本地代理 → 保存到输出目录
-    ↓ 返回给浏览器
-页面显示结果 + 缩略图
+img = Image.open("input.png")
+result = remove_watermark(img, DEFAULT_CONFIG)
+result.save("output_nowm.png")
 ```
 
-工具通过本地代理服务器转发所有请求到 ComfyUI API，避免浏览器 CORS 跨域问题。
+## 参数
 
-## 配置说明
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `watermark_height` | 150 | 底部裁剪高度（像素） |
 
-在网页界面中可配置：
+## 原理
 
-- **ComfyUI 地址** — 默认 `http://127.0.0.1:8188`
-- **输出目录** — 结果图片保存路径
-- **CFG 引导强度** — 值越高越遵循原图色彩（默认 5，建议 5-8）
-- **采样步数** — 默认 20
-- **提示词** — 去水印指令（默认"去掉图片中的文字logo，保持主体不变"）
+水印「豆包AI生成」位于图片右下角，距离底部约 0-30px，高度约 90-130px。
+裁剪底部 150px 可完全去除水印区域。
 
-所有配置自动保存到浏览器 localStorage，刷新不丢失。
+对于竖构图图片（如 1600x2848），底部 150px 通常是背景/留白，裁剪不影响主体。
 
-## License
+## 输出
 
-MIT
+- 默认后缀：`_nowm`（如 `image_nowm.png`）
+- 支持 PNG 和 JPEG 输出
+- 配置自动保存（localStorage）
+
+## 技术栈
+
+- Python 3 + Pillow (PIL)
+- 纯本地处理，无需 GPU、无需网络

@@ -1,10 +1,13 @@
 @echo off
 chcp 65001 >nul
-title ComfyUI 去水印批量处理工具
-echo ========================================
-echo   ComfyUI 去水印批量处理工具
-echo   正在启动本地服务器...
-echo ========================================
+title 去水印批量工具
 echo.
-python "%~dp0server.py"
+echo  ================================
+echo   去水印批量工具 - 启动中...
+echo  ================================
+echo.
+
+cd /d "%~dp0"
+
+python server.py
 pause
