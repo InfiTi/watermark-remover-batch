@@ -60,6 +60,61 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
 }
 .hint { color: var(--text-dim); font-size: 0.8em; }
 
+/* History */
+.history-panel {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+.history-panel h3 { font-size: 1em; margin-bottom: 12px; color: var(--text); }
+.history-empty { text-align: center; color: var(--text-dim); padding: 30px; font-size: 0.9em; }
+.history-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--input);
+}
+.history-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+  color: var(--text-dim);
+}
+.history-group-header .group-actions { display: flex; gap: 6px; }
+.history-group-header button {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 0.8em;
+}
+.history-group-header button:hover { background: var(--accent); }
+.history-thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.history-thumb {
+  width: 70px;
+  height: 70px;
+  border-radius: 6px;
+  object-fit: cover;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.history-thumb:hover { border-color: var(--accent2); transform: scale(1.05); }
+.history-thumb-result { border-color: var(--success); }
+.history-info { font-size: 0.8em; color: var(--text-dim); margin-top: 6px; }
+
 /* Drop zone */
 .drop-zone {
   background: var(--card);
@@ -265,6 +320,12 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
       </select>
     </div>
     <div class="hint">默认150px，适用于「豆包AI生成」水印</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <label>历史记录组数</label>
+      <input type="number" id="historyCount" value="10" min="1" max="50" style="width:70px">
+      <button class="btn" id="toggleHistory" style="padding:8px 16px;font-size:0.85em">📋 历史记录</button>
+      <button class="btn" id="clearHistory" style="padding:8px 16px;font-size:0.85em">🗑️ 清除历史</button>
+    </div>
   </div>
 
   <div class="drop-zone" id="dropZone">
@@ -285,6 +346,11 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
   </div>
 
   <div class="task-list" id="taskList"></div>
+
+  <div class="history-panel" id="historyPanel" style="display:none">
+    <h3>📋 操作历史记录</h3>
+    <div id="historyList"></div>
+  </div>
 </div>
 
 <div class="modal-overlay" id="modalOverlay">
@@ -319,10 +385,132 @@ const savedCrop = localStorage.getItem('wm_cropHeight');
 if (savedCrop) $('cropHeight').value = savedCrop;
 const savedFmt = localStorage.getItem('wm_outputFormat');
 if (savedFmt) $('outputFormat').value = savedFmt;
+const savedHistCount = localStorage.getItem('wm_historyCount');
+if (savedHistCount) $('historyCount').value = savedHistCount;
 
 // Save config on change
 $('cropHeight').addEventListener('change', e => localStorage.setItem('wm_cropHeight', e.target.value));
 $('outputFormat').addEventListener('change', e => localStorage.setItem('wm_outputFormat', e.target.value));
+$('historyCount').addEventListener('change', e => {
+  localStorage.setItem('wm_historyCount', e.target.value);
+  trimHistory();
+  renderHistory();
+});
+
+// ===== History =====
+const HISTORY_KEY = 'wm_history';
+
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveHistory(h) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }
+  catch(e) { console.warn('History save failed (storage full?)', e); }
+}
+
+function addHistoryGroup(tasksDone, cropHeight, format) {
+  const maxCount = parseInt($('historyCount').value) || 10;
+  const history = getHistory();
+  
+  // Build thumbnails from completed tasks (use small data URLs)
+  const items = tasksDone.filter(t => t.status === 'done' && t.resultUrl).map(t => ({
+    name: t.name,
+    originalSize: t.result?.originalSize || '',
+    newSize: t.result?.newSize || '',
+    // Store thumbnails (we'll generate small versions)
+    thumb: makeThumb(t.url),
+    thumbResult: makeThumb(t.resultUrl)
+  }));
+  
+  if (!items.length) return;
+  
+  const group = {
+    id: Date.now(),
+    time: new Date().toLocaleString('zh-CN'),
+    cropHeight,
+    format,
+    count: items.length,
+    items
+  };
+  
+  history.unshift(group);
+  while (history.length > maxCount) history.pop();
+  saveHistory(history);
+  renderHistory();
+}
+
+function makeThumb(dataUrl) {
+  // For data URLs, just return as-is (browser caches)
+  // For blob URLs, we can't persist them after page reload, so store a placeholder
+  if (dataUrl && dataUrl.startsWith('data:')) return dataUrl;
+  return null;
+}
+
+function trimHistory() {
+  const maxCount = parseInt($('historyCount').value) || 10;
+  const history = getHistory();
+  while (history.length > maxCount) history.pop();
+  saveHistory(history);
+}
+
+function renderHistory() {
+  const panel = $('historyPanel');
+  const list = $('historyList');
+  const history = getHistory();
+  
+  if (!history.length) {
+    list.innerHTML = '<div class="history-empty">暂无历史记录</div>';
+    return;
+  }
+  
+  list.innerHTML = '';
+  for (const g of history) {
+    const group = document.createElement('div');
+    group.className = 'history-group';
+    
+    let thumbs = '';
+    for (const item of g.items) {
+      if (item.thumbResult) {
+        thumbs += `<img class="history-thumb history-thumb-result" src="${item.thumbResult}" title="${item.name}\n${item.originalSize} → ${item.newSize}">`;
+      }
+    }
+    
+    group.innerHTML = `
+      <div class="history-group-header">
+        <span>🕐 ${g.time} · 裁剪${g.cropHeight}px · ${g.format.toUpperCase()} · ${g.count}张</span>
+        <div class="group-actions">
+          <button onclick="removeHistoryGroup(${g.id})">删除</button>
+        </div>
+      </div>
+      <div class="history-thumbs">${thumbs}</div>
+      <div class="history-info">点击缩略图可放大查看</div>
+    `;
+    list.appendChild(group);
+  }
+}
+
+window.removeHistoryGroup = function(id) {
+  let history = getHistory();
+  history = history.filter(g => g.id !== id);
+  saveHistory(history);
+  renderHistory();
+};
+
+$('toggleHistory').addEventListener('click', () => {
+  const panel = $('historyPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  if (panel.style.display === 'block') renderHistory();
+});
+
+$('clearHistory').addEventListener('click', () => {
+  saveHistory([]);
+  renderHistory();
+});
+
+// Init history on load
+renderHistory();
 
 // Drop zone
 dropZone.addEventListener('click', () => fileInput.click());
@@ -429,6 +617,9 @@ processBtn.addEventListener('click', async () => {
   progressFill.style.width = '100%';
   processBtn.disabled = false;
   setTimeout(() => progressBar.style.display = 'none', 2000);
+  
+  // Record to history
+  addHistoryGroup(pending, cropHeight, format);
 });
 
 // Download all
