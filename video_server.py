@@ -78,14 +78,13 @@ def process_video(input_path, output_path, crop_top, crop_bottom, crop_left, cro
     if new_w < 2 or new_h < 2:
         return False, f"Crop too large: {w}x{h} -> {new_w}x{new_h}"
     
-    # Build crop filter: crop=new_w:new_h:crop_left:crop_top
-    vf = f"crop={new_w}:{new_h}:{crop_left}:{crop_top}"
-    
-    # If we need even dimensions for x264, adjust
+    # Ensure even dimensions for x264
     if new_w % 2 != 0:
         new_w -= 1
     if new_h % 2 != 0:
         new_h -= 1
+    
+    # Build crop filter
     vf = f"crop={new_w}:{new_h}:{crop_left}:{crop_top}"
     
     cmd = [
@@ -102,6 +101,8 @@ def process_video(input_path, output_path, crop_top, crop_bottom, crop_left, cro
 
     print(f"Running: {' '.join(cmd)}")
     print(f"Crop: {w}x{h} -> {new_w}x{new_h} (top={crop_top} bottom={crop_bottom} left={crop_left} right={crop_right})")
+    print(f"Input exists: {os.path.exists(input_path)}, size: {os.path.getsize(input_path) if os.path.exists(input_path) else 'N/A'}")
+    print(f"Output dir exists: {os.path.exists(os.path.dirname(output_path))}")
 
     proc = subprocess.Popen(
         cmd,
@@ -115,8 +116,14 @@ def process_video(input_path, output_path, crop_top, crop_bottom, crop_left, cro
 
     duration = info["duration"]
     last_progress = -1
+    error_lines = []
 
     for line in proc.stderr:
+        line = line.strip()
+        if line:
+            print(f"[ffmpeg] {line}")
+        if "Error" in line or "error" in line.lower() or "Invalid" in line:
+            error_lines.append(line)
         if progress_cb and "time=" in line:
             try:
                 time_str = line.split("time=")[1].split(" ")[0]
@@ -132,7 +139,8 @@ def process_video(input_path, output_path, crop_top, crop_bottom, crop_left, cro
     if proc.returncode == 0:
         return True, f"{w}x{h} -> {new_w}x{new_h}"
     else:
-        return False, f"FFmpeg exited with code {proc.returncode}"
+        err_msg = "; ".join(error_lines[-3:]) if error_lines else f"FFmpeg exited with code {proc.returncode}"
+        return False, f"FFmpeg error (code {proc.returncode}): {err_msg}"
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -210,10 +218,15 @@ class Handler(SimpleHTTPRequestHandler):
 
                 if 'name="files"' in header:
                     fname = "video"
-                    for seg in header.split(";"):
-                        seg = seg.strip()
-                        if seg.startswith("filename="):
-                            fname = seg.split("=", 1)[1].strip('"')
+                    # Parse filename from Content-Disposition line only
+                    for line in header.split("\r\n"):
+                        line = line.strip()
+                        if line.startswith("Content-Disposition"):
+                            for seg in line.split(";"):
+                                seg = seg.strip()
+                                if seg.startswith("filename="):
+                                    fname = seg.split("=", 1)[1].strip('"')
+                            break
                     files.append((fname, content))
                 elif 'name="outputDir"' in header:
                     output_dir = content.decode("utf-8", errors="replace").strip()
