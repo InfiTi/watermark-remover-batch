@@ -41,10 +41,16 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
         files = form.get("files", [])
         crop_height = int(form.get("cropHeight", ["150"])[0])
         output_format = form.get("format", ["png"])[0]
+        output_dir = form.get("outputDir", [""])[0] if "outputDir" in form else ""
         
         if not files:
             self._json_response({"error": "No files provided"})
             return
+        
+        # Validate and prepare output directory
+        if output_dir:
+            output_dir = os.path.abspath(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
         
         results = []
         for filename, filedata in files:
@@ -72,18 +78,26 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
                     mime = "image/png"
                     ext = ".png"
                 
-                out_b64 = out_buf.getvalue()
+                out_bytes = out_buf.getvalue()
                 import base64
-                out_b64_str = base64.b64encode(out_b64).decode("ascii")
+                out_b64_str = base64.b64encode(out_bytes).decode("ascii")
                 
                 base = os.path.splitext(filename)[0]
                 out_name = f"{base}_nowm{ext}"
+                
+                # Save to output directory if specified
+                saved_path = None
+                if output_dir:
+                    saved_path = os.path.join(output_dir, out_name)
+                    with open(saved_path, "wb") as f:
+                        f.write(out_bytes)
                 
                 results.append({
                     "name": out_name,
                     "originalSize": f"{w}x{h}",
                     "newSize": f"{w}x{h - crop_height}",
-                    "data": f"data:{mime};base64,{out_b64_str}"
+                    "data": f"data:{mime};base64,{out_b64_str}",
+                    "savedPath": saved_path
                 })
                 
             except Exception as e:

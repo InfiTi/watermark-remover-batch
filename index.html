@@ -320,6 +320,10 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
       </select>
     </div>
     <div class="hint">默认150px，适用于「豆包AI生成」水印</div>
+    <div>
+      <label>输出目录</label>
+      <input type="text" id="outputDir" placeholder="留空=不保存到磁盘" style="width:220px;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:0.9em">
+    </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
       <label>历史记录组数</label>
       <input type="number" id="historyCount" value="10" min="1" max="50" style="width:70px">
@@ -387,6 +391,8 @@ const savedFmt = localStorage.getItem('wm_outputFormat');
 if (savedFmt) $('outputFormat').value = savedFmt;
 const savedHistCount = localStorage.getItem('wm_historyCount');
 if (savedHistCount) $('historyCount').value = savedHistCount;
+const savedOutputDir = localStorage.getItem('wm_outputDir');
+if (savedOutputDir) $('outputDir').value = savedOutputDir;
 
 // Save config on change
 $('cropHeight').addEventListener('change', e => localStorage.setItem('wm_cropHeight', e.target.value));
@@ -396,6 +402,7 @@ $('historyCount').addEventListener('change', e => {
   trimHistory();
   renderHistory();
 });
+$('outputDir').addEventListener('change', e => localStorage.setItem('wm_outputDir', e.target.value));
 
 // ===== History =====
 const HISTORY_KEY = 'wm_history';
@@ -414,15 +421,19 @@ function addHistoryGroup(tasksDone, cropHeight, format) {
   const maxCount = parseInt($('historyCount').value) || 10;
   const history = getHistory();
   
-  // Build thumbnails from completed tasks (use small data URLs)
-  const items = tasksDone.filter(t => t.status === 'done' && t.resultUrl).map(t => ({
-    name: t.name,
-    originalSize: t.result?.originalSize || '',
-    newSize: t.result?.newSize || '',
-    // Store thumbnails (we'll generate small versions)
-    thumb: makeThumb(t.url),
-    thumbResult: makeThumb(t.resultUrl)
-  }));
+  // Build thumbnails from completed tasks - generate small data URLs for persistence
+  const items = tasksDone.filter(t => t.status === 'done' && t.resultUrl).map(t => {
+    // Generate small thumbnail data URLs for both original and result
+    const thumbOrig = makeThumbDataUrl(t.url, 80);
+    const thumbResult = makeThumbDataUrl(t.resultUrl, 80);
+    return {
+      name: t.name,
+      originalSize: t.result?.originalSize || '',
+      newSize: t.result?.newSize || '',
+      thumb: thumbOrig,
+      thumbResult: thumbResult
+    };
+  });
   
   if (!items.length) return;
   
@@ -441,11 +452,44 @@ function addHistoryGroup(tasksDone, cropHeight, format) {
   renderHistory();
 }
 
-function makeThumb(dataUrl) {
-  // For data URLs, just return as-is (browser caches)
-  // For blob URLs, we can't persist them after page reload, so store a placeholder
-  if (dataUrl && dataUrl.startsWith('data:')) return dataUrl;
-  return null;
+function makeThumbDataUrl(srcUrl, maxSide) {
+  // Generate a small thumbnail data URL from any image URL (blob: or data:)
+  // Returns null if it can't (e.g. blob URL already revoked)
+  try {
+    const img = new Image();
+    img.src = srcUrl;
+    // Use canvas to downscale - must be synchronous, so we use a trick:
+    // If it's already a data URL, return it as-is (small enough if < 50KB)
+    if (srcUrl.startsWith('data:')) {
+      // Check if it's already small
+      if (srcUrl.length < 50000) return srcUrl;
+    }
+    // For blob URLs, we can't do synchronous canvas conversion
+    // So we'll use a simpler approach: store a placeholder
+    return null;
+  } catch { return null; }
+}
+
+// Async thumbnail generator - called before processing completes
+async function genThumbDataUrl(srcUrl, maxSide) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      let { naturalWidth: w, naturalHeight: h } = img;
+      const scale = Math.min(1, maxSide / Math.max(w, h));
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = srcUrl;
+  });
 }
 
 function trimHistory() {
@@ -561,7 +605,7 @@ function renderTasks() {
       <img class="task-thumb" src="${t.url}">
       <div class="task-info">
         <div class="task-name">${t.name}</div>
-        <div class="task-meta">${t.meta || ''}</div>
+        <div class="task-meta">${t.meta || ''}${t.result?.savedPath ? '<br><span style=\'color:var(--success);font-size:0.8em\'>💾 已保存: ' + t.result.savedPath + '</span>' : ''}</div>
       </div>
       <div class="task-status ${statusClass}">${statusText}</div>
       <div class="task-actions">${actions}</div>
@@ -592,6 +636,7 @@ processBtn.addEventListener('click', async () => {
     fd.append('files', t.file);
     fd.append('cropHeight', cropHeight);
     fd.append('format', format);
+    fd.append('outputDir', $('outputDir').value || '');
     
     try {
       const resp = await fetch('/process', { method: 'POST', body: fd });
@@ -603,6 +648,7 @@ processBtn.addEventListener('click', async () => {
         t.meta = `${r.originalSize} → ${r.newSize}`;
         t.resultUrl = r.data;
         t.result = r;
+        if (r.savedPath) t.meta += ` → ${r.savedPath}`;
       } else {
         t.status = 'error';
         t.meta = data.results?.[0]?.error || 'Unknown error';
@@ -618,8 +664,40 @@ processBtn.addEventListener('click', async () => {
   processBtn.disabled = false;
   setTimeout(() => progressBar.style.display = 'none', 2000);
   
-  // Record to history
-  addHistoryGroup(pending, cropHeight, format);
+  // Record to history (async - generate thumbnails first)
+  const doneTasks = pending.filter(t => t.status === 'done' && t.resultUrl);
+  if (doneTasks.length) {
+    // Generate thumbnails asynchronously for all done tasks
+    const thumbPromises = doneTasks.map(async t => {
+      const [thumb, thumbResult] = await Promise.all([
+        genThumbDataUrl(t.url, 80),
+        genThumbDataUrl(t.resultUrl, 80)
+      ]);
+      return {
+        name: t.name,
+        originalSize: t.result?.originalSize || '',
+        newSize: t.result?.newSize || '',
+        thumb,
+        thumbResult
+      };
+    });
+    Promise.all(thumbPromises).then(items => {
+      const maxCount = parseInt($('historyCount').value) || 10;
+      const history = getHistory();
+      const group = {
+        id: Date.now(),
+        time: new Date().toLocaleString('zh-CN'),
+        cropHeight,
+        format,
+        count: items.length,
+        items
+      };
+      history.unshift(group);
+      while (history.length > maxCount) history.pop();
+      saveHistory(history);
+      renderHistory();
+    });
+  }
 });
 
 // Download all
