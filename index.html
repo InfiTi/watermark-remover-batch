@@ -322,7 +322,7 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
     <div class="hint">默认150px，适用于「豆包AI生成」水印</div>
     <div>
       <label>输出目录</label>
-      <input type="text" id="outputDir" placeholder="留空=不保存到磁盘" style="width:220px;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:0.9em">
+      <input type="text" id="outputDir" placeholder="留空=默认 output 文件夹" style="width:220px;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:0.9em">
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
       <label>历史记录组数</label>
@@ -700,9 +700,23 @@ processBtn.addEventListener('click', async () => {
   }
 });
 
-// Download all
+// Download all - files already saved to disk by server; this triggers browser download as fallback
 downloadAllBtn.addEventListener('click', () => {
-  tasks.filter(t => t.status === 'done').forEach(t => {
+  const done = tasks.filter(t => t.status === 'done');
+  if (!done.length) return;
+  
+  // Check if files were saved to disk
+  const allSaved = done.every(t => t.result?.savedPath);
+  if (allSaved) {
+    // Files already on disk - show summary
+    const dir = done[0].result.savedPath;
+    const folder = dir.substring(0, dir.lastIndexOf('\\'));
+    alert(`文件已保存到磁盘:\n${folder}\n\n共 ${done.length} 张图片`);
+    return;
+  }
+  
+  // Fallback: browser download
+  done.forEach(t => {
     const a = document.createElement('a');
     a.href = t.resultUrl;
     a.download = t.name.replace(/\.[^.]+$/, '_nowm.png');

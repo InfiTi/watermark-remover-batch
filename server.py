@@ -48,9 +48,12 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
             return
         
         # Validate and prepare output directory
+        # If no output_dir specified, use default 'output' subdirectory
         if output_dir:
             output_dir = os.path.abspath(output_dir)
-            os.makedirs(output_dir, exist_ok=True)
+        else:
+            output_dir = os.path.join(DIR, "output")
+        os.makedirs(output_dir, exist_ok=True)
         
         results = []
         for filename, filedata in files:
@@ -85,12 +88,10 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
                 base = os.path.splitext(filename)[0]
                 out_name = f"{base}_nowm{ext}"
                 
-                # Save to output directory if specified
-                saved_path = None
-                if output_dir:
-                    saved_path = os.path.join(output_dir, out_name)
-                    with open(saved_path, "wb") as f:
-                        f.write(out_bytes)
+                # Save to output directory (always save)
+                saved_path = os.path.join(output_dir, out_name)
+                with open(saved_path, "wb") as f:
+                    f.write(out_bytes)
                 
                 results.append({
                     "name": out_name,
