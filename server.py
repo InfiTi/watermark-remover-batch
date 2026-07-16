@@ -24,6 +24,37 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404)
     
+    def do_GET(self):
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        route = parsed.path
+
+        if route == '/listdirs':
+            params = parse_qs(parsed.query)
+            dir_path = params.get('path', [''])[0]
+            self._handle_list_dirs(dir_path)
+        else:
+            # 默认静态文件伺服
+            super().do_GET()
+    
+    def _handle_list_dirs(self, dir_path):
+        """列出指定目录下的子目录"""
+        if not dir_path:
+            self._json_response({"success": False, "error": "缺少路径"})
+            return
+        try:
+            dir_path = os.path.abspath(dir_path)
+            if not os.path.isdir(dir_path):
+                self._json_response({"success": False, "error": "目录不存在"})
+                return
+            dirs = sorted([
+                d for d in os.listdir(dir_path)
+                if os.path.isdir(os.path.join(dir_path, d)) and not d.startswith('.')
+            ])
+            self._json_response({"success": True, "dirs": dirs})
+        except Exception as e:
+            self._json_response({"success": False, "error": str(e)})
+    
     def _handle_process(self):
         content_type = self.headers.get("Content-Type", "")
         

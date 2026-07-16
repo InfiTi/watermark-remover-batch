@@ -321,8 +321,15 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
     </div>
     <div class="hint">默认150px，适用于「豆包AI生成」水印</div>
     <div>
-      <label>输出目录</label>
-      <input type="text" id="outputDir" placeholder="留空=默认 output 文件夹" style="width:220px;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:0.9em">
+      <label>输出基准目录</label>
+      <input type="text" id="outputBaseDir" placeholder="F:\Obsidian\带货\商品" style="width:220px;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:0.9em">
+      <button class="btn" id="refreshSubDirs" style="padding:8px 12px;font-size:0.8em">🔄</button>
+    </div>
+    <div>
+      <label>输出到子目录</label>
+      <select id="outputSubDir" style="min-width:200px;max-width:300px">
+        <option value="">— 不选，存到基准目录 —</option>
+      </select>
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
       <label>历史记录组数</label>
@@ -391,8 +398,10 @@ const savedFmt = localStorage.getItem('wm_outputFormat');
 if (savedFmt) $('outputFormat').value = savedFmt;
 const savedHistCount = localStorage.getItem('wm_historyCount');
 if (savedHistCount) $('historyCount').value = savedHistCount;
-const savedOutputDir = localStorage.getItem('wm_outputDir');
-if (savedOutputDir) $('outputDir').value = savedOutputDir;
+const DEFAULT_BASE_DIR = 'F:\\Obsidian\\带货\\商品';
+const savedBaseDir = localStorage.getItem('wm_outputBaseDir');
+$('outputBaseDir').value = savedBaseDir || DEFAULT_BASE_DIR;
+const savedSubDir = localStorage.getItem('wm_outputSubDir') || '';
 
 // Save config on change
 $('cropHeight').addEventListener('change', e => localStorage.setItem('wm_cropHeight', e.target.value));
@@ -402,7 +411,45 @@ $('historyCount').addEventListener('change', e => {
   trimHistory();
   renderHistory();
 });
-$('outputDir').addEventListener('change', e => localStorage.setItem('wm_outputDir', e.target.value));
+$('outputBaseDir').addEventListener('change', e => {
+  localStorage.setItem('wm_outputBaseDir', e.target.value);
+  loadSubDirs();
+});
+$('outputSubDir').addEventListener('change', e => localStorage.setItem('wm_outputSubDir', e.target.value));
+$('refreshSubDirs').addEventListener('click', () => loadSubDirs());
+
+// ===== 子目录加载 =====
+async function loadSubDirs() {
+  const baseDir = $('outputBaseDir').value.trim();
+  const sel = $('outputSubDir');
+  if (!baseDir) { sel.innerHTML = '<option value="">— 不选，存到基准目录 —</option>'; return; }
+  try {
+    const resp = await fetch('/listdirs?path=' + encodeURIComponent(baseDir));
+    const data = await resp.json();
+    if (data.success && data.dirs) {
+      sel.innerHTML = '<option value="">— 不选，存到基准目录 —</option>';
+      for (const d of data.dirs) {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        if (d === savedSubDir) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    } else {
+      sel.innerHTML = '<option value="">— 目录不存在 —</option>';
+    }
+  } catch(e) {
+    sel.innerHTML = '<option value="">— 无法读取 —</option>';
+  }
+}
+loadSubDirs();
+
+function getOutputDir() {
+  const base = $('outputBaseDir').value.trim();
+  const sub = $('outputSubDir').value;
+  if (base && sub) return base + '\\' + sub + '\\处理图';
+  return base;
+}
 
 // ===== History =====
 const HISTORY_KEY = 'wm_history';
@@ -515,9 +562,10 @@ function renderHistory() {
     group.className = 'history-group';
     
     let thumbs = '';
-    for (const item of g.items) {
+    for (let idx = 0; idx < g.items.length; idx++) {
+      const item = g.items[idx];
       if (item.thumbResult) {
-        thumbs += `<img class="history-thumb history-thumb-result" src="${item.thumbResult}" title="${item.name}\n${item.originalSize} → ${item.newSize}">`;
+        thumbs += `<img class="history-thumb history-thumb-result" src="${item.thumbResult}" title="${item.name}\n${item.originalSize} → ${item.newSize}" onclick="showHistoryImage(${g.id}, ${idx})">`;
       }
     }
     
@@ -534,6 +582,80 @@ function renderHistory() {
     list.appendChild(group);
   }
 }
+
+// ===== 历史记录大图查看 =====
+window.showHistoryImage = function(groupId, itemIdx) {
+  const history = getHistory();
+  const g = history.find(h => h.id === groupId);
+  if (!g || !g.items[itemIdx]) return;
+  const item = g.items[itemIdx];
+  
+  const container = $('compareContainer');
+  container.innerHTML = '';
+  compareState = { zoom: 1, panX: 0, panY: 0, imgs: [], canvases: [], panels: [] };
+  
+  const urls = [];
+  const labels = [];
+  if (item.thumb) { urls.push(item.thumb); labels.push('原图'); }
+  if (item.thumbResult) { urls.push(item.thumbResult); labels.push('去水印后'); }
+  if (!urls.length) return;
+  
+  for (let i = 0; i < urls.length; i++) {
+    const panel = document.createElement('div');
+    panel.className = 'compare-panel';
+    const label = document.createElement('div');
+    label.className = 'compare-label';
+    label.textContent = labels[i];
+    label.style.color = i === 0 ? 'var(--text-dim)' : 'var(--success)';
+    panel.appendChild(label);
+    const canvas = document.createElement('canvas');
+    panel.appendChild(canvas);
+    container.appendChild(panel);
+    const img = new Image();
+    img.onload = function() {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      compareState.imgs[i] = img;
+      if (compareState.imgs[0] && (urls.length === 1 || compareState.imgs[1])) zoomFit();
+    };
+    img.src = urls[i];
+    compareState.canvases[i] = canvas;
+    compareState.panels[i] = panel;
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+    panel.addEventListener('mousedown', e => {
+      isDragging = true;
+      dragStart = { x: e.clientX - compareState.panX, y: e.clientY - compareState.panY };
+      panel.classList.add('dragging');
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      compareState.panX = e.clientX - dragStart.x;
+      compareState.panY = e.clientY - dragStart.y;
+      applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      compareState.panels.forEach(p => p.classList.remove('dragging'));
+    });
+  }
+  container.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.min(10, Math.max(0.1, compareState.zoom * delta));
+    const rect = container.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    compareState.panX = mx - (mx - compareState.panX) * (newZoom / compareState.zoom);
+    compareState.panY = my - (my - compareState.panY) * (newZoom / compareState.zoom);
+    compareState.zoom = newZoom;
+    applyTransform();
+  });
+  $('modalOverlay').classList.add('active');
+};
 
 window.removeHistoryGroup = function(id) {
   let history = getHistory();
@@ -636,7 +758,7 @@ processBtn.addEventListener('click', async () => {
     fd.append('files', t.file);
     fd.append('cropHeight', cropHeight);
     fd.append('format', format);
-    fd.append('outputDir', $('outputDir').value || '');
+    fd.append('outputDir', getOutputDir() || '');
     
     try {
       const resp = await fetch('/process', { method: 'POST', body: fd });

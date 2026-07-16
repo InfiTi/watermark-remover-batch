@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视频去水印批量工具</title>
+<style>
+:root {
+  --bg: #0f0f0f;
+  --card: #1a1a1a;
+  --input: #222;
+  --border: #333;
+  --text: #e0e0e0;
+  --muted: #888;
+  --accent: #4a9eff;
+  --accent-hover: #3a8eef;
+  --success: #4caf50;
+  --error: #f44336;
+  --warn: #ff9800;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 20px;
+}
+.container { max-width: 900px; margin: 0 auto; }
+h1 { font-size: 1.5em; margin-bottom: 6px; }
+.subtitle { color: var(--muted); margin-bottom: 20px; font-size: 0.88em; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.card h2 { font-size: 1.05em; margin-bottom: 14px; }
+
+.row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 0.78em; color: var(--muted); }
+.field input, .field select {
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 11px;
+  font-size: 0.88em;
+  outline: none;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.field input[type="number"] { width: 75px; }
+
+.crop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.crop-item {
+  background: var(--input);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.crop-item label { font-size: 0.8em; color: var(--muted); display: block; margin-bottom: 6px; }
+.crop-item input { width: 70px; text-align: center; }
+.crop-item .hint { font-size: 0.72em; color: var(--muted); margin-top: 4px; }
+
+.btn {
+  padding: 9px 18px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: 0.2s;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: var(--input); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); }
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 36px;
+  text-align: center;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(74,158,255,0.05); }
+.drop-zone p { color: var(--muted); font-size: 0.9em; }
+.drop-zone .icon { font-size: 2em; margin-bottom: 6px; }
+
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--input);
+  border-radius: 8px;
+  font-size: 0.88em;
+  flex-wrap: wrap;
+}
+.task-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 150px; }
+.task-item .status { font-size: 0.82em; padding: 2px 10px; border-radius: 4px; }
+.status-pending { background: #333; color: var(--muted); }
+.status-processing { background: #1a3a5a; color: var(--accent); }
+.status-done { background: #1a3a1a; color: var(--success); }
+.status-error { background: #3a1a1a; color: var(--error); }
+
+.progress-bar { width: 100%; height: 4px; background: var(--input); border-radius: 2px; overflow: hidden; display: none; margin-top: 10px; }
+.progress-fill { height: 100%; background: var(--accent); width: 0; transition: width 0.3s; }
+
+.ffmpeg-warn { background: #3a2a00; border: 1px solid var(--warn); color: var(--warn); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.88em; display: none; }
+
+.result-info { width: 100%; font-size: 0.8em; color: var(--success); margin-top: 4px; word-break: break-all; }
+.error-info { width: 100%; font-size: 0.8em; color: var(--error); margin-top: 4px; }
+
+.preview-box {
+  background: var(--input);
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 12px;
+  font-size: 0.82em;
+  color: var(--muted);
+}
+.preview-box b { color: var(--text); }
+.preview-box .arrow { color: var(--accent); margin: 0 6px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎬 视频去水印批量工具</h1>
+  <p class="subtitle">裁剪水印区域 · 批量处理 · 基于 FFmpeg</p>
+
+  <div id="ffmpegWarn" class="ffmpeg-warn">⚠️ 未检测到 FFmpeg，请先安装并添加到系统 PATH</div>
+
+  <div class="card">
+    <h2>裁剪设置</h2>
+    <p style="color:var(--muted);font-size:0.82em;margin-bottom:12px">
+      设置四个边的裁剪像素数。豆包AI视频水印通常在左上角和右下角，<br>
+      默认裁剪底部70px去除右下角水印。如左上角也有水印，增加顶部裁剪。
+    </p>
+    <div class="crop-grid">
+      <div class="crop-item">
+        <label>⬆️ 顶部裁剪 (px)</label>
+        <input type="number" id="cropTop" value="0" min="0" max="500">
+        <div class="hint">左上角水印</div>
+      </div>
+      <div class="crop-item">
+        <label>⬇️ 底部裁剪 (px)</label>
+        <input type="number" id="cropBottom" value="70" min="0" max="500">
+        <div class="hint">右下角水印</div>
+      </div>
+      <div class="crop-item">
+        <label>⬅️ 左侧裁剪 (px)</label>
+        <input type="number" id="cropLeft" value="0" min="0" max="500">
+      </div>
+    </div>
+    <div class="crop-grid" style="margin-top:0">
+      <div class="crop-item">
+        <label>➡️ 右侧裁剪 (px)</label>
+        <input type="number" id="cropRight" value="0" min="0" max="500">
+      </div>
+      <div class="crop-item">
+        <label>CRF (质量 0-51)</label>
+        <input type="number" id="crf" value="18" min="0" max="51">
+        <div class="hint">18=高质量 23=默认</div>
+      </div>
+      <div class="crop-item">
+        <label>编码预设</label>
+        <select id="preset">
+          <option value="ultrafast">ultrafast</option>
+          <option value="superfast">superfast</option>
+          <option value="veryfast">veryfast</option>
+          <option value="fast">fast</option>
+          <option value="medium" selected>medium</option>
+          <option value="slow">slow</option>
+          <option value="slower">slower</option>
+          <option value="veryslow">veryslow</option>
+        </select>
+      </div>
+    </div>
+    <div class="preview-box" id="previewBox">
+      <b>裁剪预览：</b> 原始 <span id="origSize">720×1280</span> <span class="arrow">→</span> 裁剪后 <span id="newSize">720×1210</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>输出目录</h2>
+    <div class="row">
+      <div class="field">
+        <label>保存位置（留空=默认 output 文件夹）</label>
+        <input type="text" id="outputDir" placeholder="如 E:\videos\output" style="width:350px">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>上传视频</h2>
+    <div class="drop-zone" id="dropZone">
+      <div class="icon">📹</div>
+      <p>拖拽视频文件到此处，或点击选择</p>
+      <p style="font-size:0.78em;margin-top:4px">支持 MP4 / MOV / AVI / MKV / WebM</p>
+      <input type="file" id="fileInput" multiple accept="video/*" style="display:none">
+    </div>
+  </div>
+
+  <div class="card" id="processCard" style="display:none">
+    <h2>处理任务</h2>
+    <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="processBtn">▶ 开始处理</button>
+      <button class="btn btn-secondary" id="clearBtn">清空列表</button>
+    </div>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="task-list" id="taskList" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let tasks = [];
+
+// Load config
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    $('cropTop').value = cfg.crop_top ?? 0;
+    $('cropBottom').value = cfg.crop_bottom ?? 70;
+    $('cropLeft').value = cfg.crop_left ?? 0;
+    $('cropRight').value = cfg.crop_right ?? 0;
+    $('crf').value = cfg.crf ?? 18;
+    $('preset').value = cfg.preset ?? 'medium';
+    updatePreview();
+  } catch(e) {}
+}
+
+async function saveConfig() {
+  const cfg = {
+    crop_top: parseInt($('cropTop').value) || 0,
+    crop_bottom: parseInt($('cropBottom').value) || 0,
+    crop_left: parseInt($('cropLeft').value) || 0,
+    crop_right: parseInt($('cropRight').value) || 0,
+    crf: parseInt($('crf').value) || 18,
+    preset: $('preset').value
+  };
+  try { await fetch('/api/config', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); } catch(e) {}
+}
+
+function updatePreview() {
+  const origW = 720, origH = 1280;
+  const ct = parseInt($('cropTop').value) || 0;
+  const cb = parseInt($('cropBottom').value) || 0;
+  const cl = parseInt($('cropLeft').value) || 0;
+  const cr = parseInt($('cropRight').value) || 0;
+  const newW = origW - cl - cr;
+  const newH = origH - ct - cb;
+  $('origSize').textContent = `${origW}×${origH}`;
+  $('newSize').textContent = `${Math.max(0,newW)}×${Math.max(0,newH)}`;
+  $('newSize').style.color = (newW < 100 || newH < 100) ? 'var(--error)' : 'var(--success)';
+}
+
+['cropTop','cropBottom','cropLeft','cropRight','crf','preset'].forEach(id => {
+  $(id).addEventListener('change', () => { updatePreview(); saveConfig(); });
+});
+
+// Load saved output dir
+function loadLocal() {
+  const s = localStorage.getItem('video_watermark_settings');
+  if (s) { try { const j = JSON.parse(s); if (j.outputDir) $('outputDir').value = j.outputDir; } catch(e) {} }
+}
+function saveLocal() {
+  localStorage.setItem('video_watermark_settings', JSON.stringify({outputDir: $('outputDir').value}));
+}
+$('outputDir').addEventListener('change', saveLocal);
+
+// FFmpeg check
+async function checkFFmpeg() {
+  try {
+    const r = await fetch('/api/ffmpeg-check');
+    const d = await r.json();
+    if (!d.ok) { $('ffmpegWarn').style.display = 'block'; $('ffmpegWarn').textContent = '⚠️ 未检测到 FFmpeg: ' + d.error; }
+  } catch(e) {}
+}
+
+// Drop zone
+const dz = $('dropZone'), fi = $('fileInput');
+dz.addEventListener('click', () => fi.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+fi.addEventListener('change', () => handleFiles(fi.files));
+
+function handleFiles(files) {
+  for (const f of files) {
+    if (f.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv)$/i.test(f.name)) {
+      tasks.push({id: Date.now()+Math.random(), name: f.name, file: f, status: 'pending', meta: ''});
+    }
+  }
+  if (tasks.length) { $('processCard').style.display = 'block'; renderTasks(); }
+}
+
+function renderTasks() {
+  const list = $('taskList');
+  list.innerHTML = '';
+  tasks.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'task-item';
+    const st = {pending:'等待',processing:'处理中',done:'完成',error:'失败'}[t.status];
+    div.innerHTML = `<span class="name">${t.name}</span><span class="status status-${t.status}">${st}</span><span style="color:var(--muted);font-size:0.85em">${t.meta||''}</span>`;
+    if (t.savedPath) {
+      const p = document.createElement('div'); p.className='result-info'; p.textContent='✅ ' + t.savedPath; div.appendChild(p);
+    }
+    if (t.errorMsg) {
+      const p = document.createElement('div'); p.className='error-info'; p.textContent='❌ ' + t.errorMsg; div.appendChild(p);
+    }
+    list.appendChild(div);
+  });
+}
+
+$('processBtn').addEventListener('click', async () => {
+  const pending = tasks.filter(t => t.status === 'pending');
+  if (!pending.length) return;
+  $('processBtn').disabled = true;
+  $('progressBar').style.display = 'block';
+
+  for (let i = 0; i < pending.length; i++) {
+    const t = pending[i];
+    t.status = 'processing'; t.meta = '0%'; renderTasks();
+    $('progressFill').style.width = `${(i / pending.length) * 100}%`;
+
+    const fd = new FormData();
+    fd.append('files', t.file);
+    fd.append('outputDir', $('outputDir').value || '');
+    fd.append('crf', $('crf').value);
+    fd.append('preset', $('preset').value);
+    fd.append('crop_top', $('cropTop').value);
+    fd.append('crop_bottom', $('cropBottom').value);
+    fd.append('crop_left', $('cropLeft').value);
+    fd.append('crop_right', $('cropRight').value);
+
+    try {
+      const resp = await fetch('/api/process', {method:'POST', body:fd});
+      const data = await resp.json();
+      const r = data.results?.[0];
+      if (r && r.status === 'ok') {
+        t.status = 'done'; t.meta = r.info || '完成'; t.savedPath = r.savedPath;
+      } else {
+        t.status = 'error'; t.errorMsg = r?.error || 'Unknown error';
+      }
+    } catch(e) { t.status = 'error'; t.errorMsg = e.message; }
+    renderTasks();
+  }
+  $('progressFill').style.width = '100%';
+  $('processBtn').disabled = false;
+});
+
+$('clearBtn').addEventListener('click', () => { tasks = []; renderTasks(); $('progressBar').style.display = 'none'; });
+
+// Init
+loadConfig(); loadLocal(); checkFFmpeg();
+</script>
+</body>
+</html>
