@@ -71,6 +71,7 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
         
         files = form.get("files", [])
         crop_height = int(form.get("cropHeight", ["150"])[0])
+        crop_top = int(form.get("cropTop", ["0"])[0])
         output_format = form.get("format", ["png"])[0]
         output_dir = form.get("outputDir", [""])[0] if "outputDir" in form else ""
         
@@ -92,12 +93,13 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
                 img = Image.open(io.BytesIO(filedata))
                 w, h = img.size
                 
-                if crop_height >= h:
+                total_crop = crop_height + crop_top
+                if total_crop >= h:
                     results.append({"name": filename, "error": "Image too small to crop"})
                     continue
                 
-                # Crop bottom strip
-                result = img.crop((0, 0, w, h - crop_height))
+                # Crop top and bottom strips
+                result = img.crop((0, crop_top, w, h - crop_height))
                 
                 # Convert to output format
                 out_buf = io.BytesIO()
@@ -127,7 +129,7 @@ class WatermarkHandler(http.server.SimpleHTTPRequestHandler):
                 results.append({
                     "name": out_name,
                     "originalSize": f"{w}x{h}",
-                    "newSize": f"{w}x{h - crop_height}",
+                    "newSize": f"{w}x{h - crop_height - crop_top}",
                     "data": f"data:{mime};base64,{out_b64_str}",
                     "savedPath": saved_path
                 })

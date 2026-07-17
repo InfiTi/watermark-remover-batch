@@ -305,12 +305,16 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
 <body>
 <div class="container">
   <h1>✂️ 去水印批量工具</h1>
-  <p class="subtitle">裁剪底部水印区域 · 无需AI · 纯本地处理 · 支持批量</p>
+  <p class="subtitle">裁剪图片水印区域 · 无需AI · 纯本地处理 · 支持批量</p>
 
   <div class="config-bar">
     <div>
+      <label>顶部裁剪高度</label>
+      <input type="number" id="cropTop" value="0" min="0" max="500">
+    </div>
+    <div>
       <label>底部裁剪高度</label>
-      <input type="number" id="cropHeight" value="150" min="10" max="500">
+      <input type="number" id="cropHeight" value="150" min="0" max="500">
     </div>
     <div>
       <label>输出格式</label>
@@ -319,7 +323,7 @@ h1 { text-align: center; font-size: 1.8em; margin-bottom: 20px; color: var(--tex
         <option value="jpeg">JPEG（更小）</option>
       </select>
     </div>
-    <div class="hint">默认150px，适用于「豆包AI生成」水印</div>
+    <div class="hint">底部默认150px（豆包水印），顶部按需填写</div>
     <div>
       <label>输出基准目录</label>
       <input type="text" id="outputBaseDir" placeholder="F:\Obsidian\带货\商品" style="width:220px;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:0.9em">
@@ -394,6 +398,8 @@ let tasks = [];
 // Load saved config
 const savedCrop = localStorage.getItem('wm_cropHeight');
 if (savedCrop) $('cropHeight').value = savedCrop;
+const savedCropTop = localStorage.getItem('wm_cropTop');
+if (savedCropTop) $('cropTop').value = savedCropTop;
 const savedFmt = localStorage.getItem('wm_outputFormat');
 if (savedFmt) $('outputFormat').value = savedFmt;
 const savedHistCount = localStorage.getItem('wm_historyCount');
@@ -405,6 +411,7 @@ const savedSubDir = localStorage.getItem('wm_outputSubDir') || '';
 
 // Save config on change
 $('cropHeight').addEventListener('change', e => localStorage.setItem('wm_cropHeight', e.target.value));
+$('cropTop').addEventListener('change', e => localStorage.setItem('wm_cropTop', e.target.value));
 $('outputFormat').addEventListener('change', e => localStorage.setItem('wm_outputFormat', e.target.value));
 $('historyCount').addEventListener('change', e => {
   localStorage.setItem('wm_historyCount', e.target.value);
@@ -745,6 +752,7 @@ processBtn.addEventListener('click', async () => {
   progressBar.style.display = 'block';
   
   const cropHeight = $('cropHeight').value;
+  const cropTop = $('cropTop').value;
   const format = $('outputFormat').value;
   
   // Process in batches to avoid timeout
@@ -757,6 +765,7 @@ processBtn.addEventListener('click', async () => {
     const fd = new FormData();
     fd.append('files', t.file);
     fd.append('cropHeight', cropHeight);
+    fd.append('cropTop', cropTop);
     fd.append('format', format);
     fd.append('outputDir', getOutputDir() || '');
     
@@ -810,6 +819,7 @@ processBtn.addEventListener('click', async () => {
         id: Date.now(),
         time: new Date().toLocaleString('zh-CN'),
         cropHeight,
+        cropTop,
         format,
         count: items.length,
         items
